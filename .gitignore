@@ -1,0 +1,28 @@
+# dependencies
+node_modules/
+
+# build outputs
+dist/
+.vite/
+
+# lockfiles (optional if you only use npm)
+pnpm-lock.yaml
+yarn.lock
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# system files
+.DS_Store
+
+# backend build and cache
+backend/target/
+backend/.mvn/
+backend/.m2/
+
+# virtual envs and tooling
+.venv/
+.idea/
+.vscode/
