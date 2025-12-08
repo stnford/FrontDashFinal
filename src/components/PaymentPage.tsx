@@ -6,9 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { ArrowLeft, CreditCard } from "lucide-react";
 import { Separator } from "./ui/separator";
+import { api } from "../lib/api";
 
 interface CartItem {
   id: string;
+  itemId: number;
   name: string;
   price: number;
   quantity: number;
@@ -42,11 +44,13 @@ export function PaymentPage({ cartItems, onNavigateBack, onNavigateToOrderConfir
     addressLine2: "",
     city: "",
     state: "",
+    zip: "",
     contactName: "",
     contactPhone: ""
   });
 
   const [showDeliveryForm, setShowDeliveryForm] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const subtotal = cartItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
   const serviceCharge = subtotal * 0.0825;
@@ -88,7 +92,7 @@ export function PaymentPage({ cartItems, onNavigateBack, onNavigateToOrderConfir
     e.preventDefault();
     
     const cleanedCard = paymentForm.cardNumber.replace(/\D/g, "");
-    if (cleanedCard.length !== 16 || !luhnCheck(cleanedCard)) {
+    if (cleanedCard.length !== 16) {
       alert("Card declined: invalid card number");
       return;
     }
@@ -109,45 +113,70 @@ export function PaymentPage({ cartItems, onNavigateBack, onNavigateToOrderConfir
       return;
     }
 
-    // Simple approval algorithm: 80% chance success, decline if total > 500
-    if (grandTotal > 500) {
-      alert("Card declined: exceeds approval amount");
-      return;
-    }
-    if (Math.random() < 0.2) {
-      alert("Card declined: issuer rejected");
-      return;
-    }
+    // Basic acceptance: no random issuer rejection, no arbitrary spend limit
 
     setShowDeliveryForm(true);
   };
 
-  const handleDeliverySubmit = (e: React.FormEvent) => {
+  const handleDeliverySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // Basic validation
     if (!deliveryForm.contactPhone || deliveryForm.contactPhone.length !== 10) {
       alert("Please enter a valid 10-digit phone number");
       return;
     }
+    if (!cartItems.length) {
+      alert("Cart is empty");
+      return;
+    }
+    if (!deliveryForm.addressLine1 || !deliveryForm.city || !deliveryForm.state) {
+      alert("Please complete the delivery address.");
+      return;
+    }
 
-    // Generate order details
-    const orderDetails = {
-      orderNumber: Math.random().toString(36).substr(2, 9).toUpperCase(),
-      restaurantName: cartItems[0]?.restaurantName,
-      orderDate: new Date().toLocaleString(),
-      items: cartItems,
-      subtotal,
-      serviceCharge,
-      tips: tipAmount,
-      grandTotal,
-      deliveryAddress: `${deliveryForm.addressLine1}${deliveryForm.addressLine2 ? ', ' + deliveryForm.addressLine2 : ''}, ${deliveryForm.city}, ${deliveryForm.state}`,
-      contactName: deliveryForm.contactName,
-      contactPhone: deliveryForm.contactPhone,
-      estimatedDelivery: new Date(Date.now() + 45 * 60000).toLocaleTimeString() // 45 minutes from now
-    };
+    setIsSubmitting(true);
 
-    onNavigateToOrderConfirmation(orderDetails);
+    try {
+      const response = await api.createOrder({
+        restName: cartItems[0].restaurantName,
+        tipAmount,
+        items: cartItems.map(item => ({
+          itemId: item.itemId,
+          quantity: item.quantity
+        })),
+        delivery: {
+          streetAddress1: deliveryForm.addressLine1,
+          streetAddress2: deliveryForm.addressLine2,
+          city: deliveryForm.city,
+          state: deliveryForm.state,
+          zip: deliveryForm.zip,
+          contactName: deliveryForm.contactName,
+          contactPhone: deliveryForm.contactPhone
+        }
+      });
+
+      const orderDetails = {
+        orderNumber: String(response.orderNumber),
+        restaurantName: cartItems[0]?.restaurantName,
+        orderDate: new Date().toLocaleString(),
+        items: cartItems,
+        subtotal: response.subtotal,
+        serviceCharge: response.serviceCharge,
+        tips: response.tipAmount,
+        grandTotal: response.grandTotal,
+        deliveryAddress: `${deliveryForm.addressLine1}${deliveryForm.addressLine2 ? ', ' + deliveryForm.addressLine2 : ''}, ${deliveryForm.city}, ${deliveryForm.state}${deliveryForm.zip ? ' ' + deliveryForm.zip : ''}`,
+        contactName: deliveryForm.contactName,
+        contactPhone: deliveryForm.contactPhone,
+        estimatedDelivery: new Date(Date.now() + 45 * 60000).toLocaleTimeString()
+      };
+
+      onNavigateToOrderConfirmation(orderDetails);
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || "Unable to place order. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   if (showDeliveryForm) {
@@ -215,6 +244,15 @@ export function PaymentPage({ cartItems, onNavigateBack, onNavigateToOrderConfir
                   </div>
 
                   <div>
+                    <Label htmlFor="zip">Zip Code</Label>
+                    <Input
+                      id="zip"
+                      value={deliveryForm.zip}
+                      onChange={(e) => setDeliveryForm(prev => ({ ...prev, zip: e.target.value }))}
+                    />
+                  </div>
+
+                  <div>
                     <Label htmlFor="contactName">Contact Person Name *</Label>
                     <Input
                       id="contactName"
@@ -241,8 +279,8 @@ export function PaymentPage({ cartItems, onNavigateBack, onNavigateToOrderConfir
                 </CardContent>
               </Card>
 
-              <Button type="submit" className="w-full bg-primary hover:bg-primary/90 py-6 text-lg font-bold">
-                Complete Order
+              <Button type="submit" className="w-full bg-primary hover:bg-primary/90 py-6 text-lg font-bold" disabled={isSubmitting}>
+                {isSubmitting ? "Placing order..." : "Complete Order"}
               </Button>
             </form>
           </div>

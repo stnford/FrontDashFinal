@@ -9,12 +9,15 @@ import org.springframework.jdbc.support.GeneratedKeyHolder;
 import org.springframework.jdbc.support.KeyHolder;
 import org.springframework.stereotype.Repository;
 
+import java.sql.Date;
 import java.sql.PreparedStatement;
+import java.sql.Time;
 import java.sql.Statement;
 import java.sql.Types;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Repository
 public class FrontdashRepository {
@@ -129,6 +132,63 @@ public class FrontdashRepository {
         Map<String, Object> out = createOrderCall.execute(in);
         Number orderNumber = (Number) out.get("p_orderNumber");
         return orderNumber == null ? 0 : orderNumber.intValue();
+    }
+
+    public int createOrderWithTotals(String restName, double subtotal, double tipAmount) {
+        KeyHolder kh = new GeneratedKeyHolder();
+        jdbcTemplate.update(conn -> {
+            PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO Orders(restName, orderDate, orderTime, subtotalAmount, tipAmount, orderStatus) " +
+                            "VALUES (?,?,?,?,?,?)",
+                    Statement.RETURN_GENERATED_KEYS
+            );
+            ps.setString(1, restName);
+            ps.setDate(2, Date.valueOf(java.time.LocalDate.now()));
+            ps.setTime(3, Time.valueOf(java.time.LocalTime.now()));
+            ps.setDouble(4, subtotal);
+            ps.setDouble(5, tipAmount);
+            ps.setString(6, "In Progress");
+            return ps;
+        }, kh);
+        Number key = kh.getKey();
+        return key == null ? 0 : key.intValue();
+    }
+
+    public Map<Integer, Map<String, Object>> getMenuItemsForRestaurant(String restName, List<Integer> itemIds) {
+        if (itemIds == null || itemIds.isEmpty()) {
+            return Map.of();
+        }
+        String placeholders = itemIds.stream().map(id -> "?").collect(Collectors.joining(","));
+        List<Object> params = itemIds.stream().map(id -> (Object) id).collect(Collectors.toList());
+        params.add(0, restName);
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList(
+                "SELECT mi.itemID, mi.itemName, mi.itemPrice " +
+                        "FROM RestaurantToMenu rtm JOIN MenuItems mi ON mi.itemID = rtm.itemID " +
+                        "WHERE rtm.restName = ? AND mi.itemID IN (" + placeholders + ")",
+                params.toArray()
+        );
+        Map<Integer, Map<String, Object>> result = new HashMap<>();
+        for (Map<String, Object> row : rows) {
+            Number id = (Number) row.get("itemID");
+            if (id != null) {
+                result.put(id.intValue(), row);
+            }
+        }
+        return result;
+    }
+
+    public void addOrderItem(int orderNumber, int itemId, int quantity, double lineSubtotal) {
+        jdbcTemplate.update(
+                "INSERT INTO OrderToItems(orderNumber, itemID, quantity, lineSubtotal) VALUES (?,?,?,?)",
+                orderNumber, itemId, quantity, lineSubtotal
+        );
+    }
+
+    public void setOrderDeliveryAddress(int orderNumber, int addressId, String contactName, String contactPhone) {
+        jdbcTemplate.update(
+                "INSERT INTO OrderDeliveryAddress(orderNumber, addressID, contactName, contactPhone) VALUES (?,?,?,?)",
+                orderNumber, addressId, contactName, contactPhone
+        );
     }
 
     public void assignDriver(int orderNumber, String driverName) {

@@ -1,12 +1,17 @@
 package com.frontdash.backend.service;
 
+import com.frontdash.backend.dto.CreateOrderRequest;
+import com.frontdash.backend.dto.CreateOrderResponse;
 import com.frontdash.backend.repository.FrontdashRepository;
 import org.springframework.stereotype.Service;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.sql.Date;
 import java.sql.Time;
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -69,8 +74,48 @@ public class FrontdashService {
         return repository.listDrivers();
     }
 
-    public int createOrder(String restName) {
-        return repository.createOrder(restName);
+    public CreateOrderResponse createOrder(CreateOrderRequest request) {
+        double tipAmount = request.getTipAmount() == null ? 0.0 : request.getTipAmount();
+
+        List<Integer> itemIds = request.getItems().stream()
+                .map(CreateOrderRequest.OrderItem::getItemId)
+                .toList();
+        Map<Integer, Map<String, Object>> menuItems = repository.getMenuItemsForRestaurant(request.getRestName(), itemIds);
+        if (menuItems.size() != itemIds.size()) {
+            throw new IllegalArgumentException("One or more menu items are invalid for this restaurant");
+        }
+
+        double subtotal = 0.0;
+        Map<Integer, Double> lineSubtotals = new HashMap<>();
+        for (CreateOrderRequest.OrderItem item : request.getItems()) {
+            Map<String, Object> menuRow = menuItems.get(item.getItemId());
+            double price = ((Number) menuRow.get("itemPrice")).doubleValue();
+            double line = price * item.getQuantity();
+            lineSubtotals.put(item.getItemId(), line);
+            subtotal += line;
+        }
+
+        int orderNumber = repository.createOrderWithTotals(request.getRestName(), roundCurrency(subtotal), roundCurrency(tipAmount));
+
+        for (CreateOrderRequest.OrderItem item : request.getItems()) {
+            double line = lineSubtotals.get(item.getItemId());
+            repository.addOrderItem(orderNumber, item.getItemId(), item.getQuantity(), roundCurrency(line));
+        }
+
+        CreateOrderRequest.DeliveryDetails delivery = request.getDelivery();
+        int addressId = repository.createAddress(
+                delivery.getStreetAddress1(),
+                delivery.getStreetAddress2(),
+                delivery.getCity(),
+                delivery.getState(),
+                delivery.getZip()
+        );
+        repository.setOrderDeliveryAddress(orderNumber, addressId, delivery.getContactName(), delivery.getContactPhone());
+
+        double serviceCharge = roundCurrency(subtotal * 0.0825);
+        double grandTotal = roundCurrency(subtotal + serviceCharge + tipAmount);
+
+        return new CreateOrderResponse(orderNumber, roundCurrency(subtotal), serviceCharge, roundCurrency(tipAmount), grandTotal, "Order created");
     }
 
     public void assignDriver(int orderNumber, String driverName) {
@@ -107,5 +152,9 @@ public class FrontdashService {
 
     public List<Map<String, Object>> getHours(String restName) {
         return repository.getHoursByRestaurant(restName);
+    }
+
+    private double roundCurrency(double amount) {
+        return BigDecimal.valueOf(amount).setScale(2, RoundingMode.HALF_UP).doubleValue();
     }
 }

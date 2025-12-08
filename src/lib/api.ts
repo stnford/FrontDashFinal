@@ -92,10 +92,30 @@ export const api = {
       method: "PUT",
       body: JSON.stringify({ driverName, status }),
     }),
-  createOrder: (restName: string) =>
-    fetchJson<{ orderNumber: number; message: string }>("/api/orders", {
+  createOrder: (payload: {
+    restName: string;
+    items: { itemId: number; quantity: number }[];
+    tipAmount?: number;
+    delivery: {
+      streetAddress1: string;
+      streetAddress2?: string;
+      city: string;
+      state: string;
+      zip?: string;
+      contactName: string;
+      contactPhone: string;
+    };
+  }) =>
+    fetchJson<{
+      orderNumber: number;
+      message: string;
+      subtotal: number;
+      serviceCharge: number;
+      tipAmount: number;
+      grandTotal: number;
+    }>("/api/orders", {
       method: "POST",
-      body: JSON.stringify({ restName }),
+      body: JSON.stringify(payload),
     }),
   assignDriver: (orderNumber: number, driverName: string) =>
     fetchJson<{ message: string }>(`/api/orders/${orderNumber}/assign-driver`, {
@@ -108,6 +128,8 @@ export const api = {
       body: JSON.stringify({ date, time }),
     }),
   listOrders: () => fetchJson<any[]>("/api/orders"),
+  getOrderSummary: (orderNumber: number) =>
+    fetchJson<any>(`/api/orders/${orderNumber}`),
 };
 
 export type ApiClient = typeof api;

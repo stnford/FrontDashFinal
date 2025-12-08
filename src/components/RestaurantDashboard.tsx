@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { Badge } from "./ui/badge";
@@ -12,6 +12,7 @@ import { DragDropImageUpload } from "./DragDropImageUpload";
 
 interface RestaurantDashboardProps {
   onNavigateToLanding: () => void;
+  initialRestaurantName?: string;
 }
 
 type OpeningHoursEntry = {
@@ -31,7 +32,7 @@ const defaultOpeningHours: OpeningHoursEntry[] = [
   { day: 'Sunday', open: '10:00', close: '21:00', closed: false },
 ];
 
-export function RestaurantDashboard({ onNavigateToLanding }: RestaurantDashboardProps) {
+export function RestaurantDashboard({ onNavigateToLanding, initialRestaurantName }: RestaurantDashboardProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'menu' | 'hours' | 'settings'>('overview');
   const [menuItems, setMenuItems] = useState<
     { id: string; name: string; price: number; available: boolean; image: string }[]
@@ -50,14 +51,62 @@ export function RestaurantDashboard({ onNavigateToLanding }: RestaurantDashboard
     imageUrl: "",
     available: true
   });
-  const [restaurantName, setRestaurantName] = useState("All Chicken Meals");
+  const [restaurantName, setRestaurantName] = useState(initialRestaurantName || "All Chicken Meals");
   const [contactPerson, setContactPerson] = useState("Laura Wimbleton");
   const [phoneNumber, setPhoneNumber] = useState("6174783785");
   const [emailAddress, setEmailAddress] = useState("allchicken@frontdash.test");
   const [accountUpdateMessage, setAccountUpdateMessage] = useState("");
   const [accountUpdateError, setAccountUpdateError] = useState("");
 
+  const [orders, setOrders] = useState<any[]>([]);
+  const [orderSummaries, setOrderSummaries] = useState<Record<number, any>>({});
+
   const [openingHours, setOpeningHours] = useState<OpeningHoursEntry[]>(defaultOpeningHours);
+
+  useEffect(() => {
+    if (initialRestaurantName) {
+      setRestaurantName(initialRestaurantName);
+    }
+  }, [initialRestaurantName]);
+
+  useEffect(() => {
+    const loadOrders = async () => {
+      try {
+        const all = await api.listOrders();
+        const byRest = (all as any[]).filter((o) => o.restName === restaurantName);
+        setOrders(byRest);
+        const summaries = await Promise.all(
+          byRest.map(async (o) => {
+            try {
+              const summary = await api.getOrderSummary(o.orderNumber);
+              return [o.orderNumber, summary] as const;
+            } catch {
+              return [o.orderNumber, null] as const;
+            }
+          })
+        );
+        const summaryMap: Record<number, any> = {};
+        for (const [num, summary] of summaries) {
+          if (summary) summaryMap[num] = summary;
+        }
+        setOrderSummaries(summaryMap);
+      } catch (err: any) {
+        toast.error(err?.message || "Failed to load orders");
+      }
+    };
+    if (restaurantName) {
+      void loadOrders();
+    }
+  }, [restaurantName]);
+
+  const summary = useMemo(() => {
+    const revenue = orders.reduce((sum, o) => sum + Number(o.grandTotal || 0), 0);
+    return {
+      ordersCount: orders.length,
+      revenue: revenue.toFixed(2),
+      recent: orders.slice(0, 5)
+    };
+  }, [orders]);
 
   useEffect(() => {
     const load = async () => {
@@ -348,7 +397,7 @@ export function RestaurantDashboard({ onNavigateToLanding }: RestaurantDashboard
             </Button>
             <div>
               <h1 className="text-xl font-bold text-white">Restaurant Dashboard</h1>
-              <p className="text-white/80">Tony's Pizza Palace</p>
+              <p className="text-white/80">{restaurantName}</p>
             </div>
           </div>
           <Button 
@@ -420,19 +469,19 @@ export function RestaurantDashboard({ onNavigateToLanding }: RestaurantDashboard
                 
                 <Card>
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-medium">Orders Today</CardTitle>
+                    <CardTitle className="text-sm font-medium">Orders (all)</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">24</div>
+                    <div className="text-2xl font-bold">{summary.ordersCount}</div>
                   </CardContent>
                 </Card>
                 
                 <Card>
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-sm font-medium">Revenue Today</CardTitle>
+                    <CardTitle className="text-sm font-medium">Revenue (all)</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">$489.50</div>
+                    <div className="text-2xl font-bold">${summary.revenue}</div>
                   </CardContent>
                 </Card>
               </div>
@@ -442,22 +491,30 @@ export function RestaurantDashboard({ onNavigateToLanding }: RestaurantDashboard
                   <CardTitle>Recent Orders</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center p-3 bg-muted/50 rounded">
-                      <div>
-                        <p className="font-medium">Order #FD123456</p>
-                        <p className="text-sm text-muted-foreground">2x Margherita Pizza, 1x Caesar Salad</p>
-                      </div>
-                      <Badge>Preparing</Badge>
+                  {summary.recent.length === 0 ? (
+                    <p className="text-muted-foreground text-sm">No orders yet.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {summary.recent.map((order) => {
+                        const summaryForOrder = orderSummaries[order.orderNumber];
+                        const items = summaryForOrder?.items as any[] | undefined;
+                        const desc = items && items.length
+                          ? items.map((i) => `${i.itemName} x${i.quantity}`).join(", ")
+                          : "No items found";
+                        return (
+                          <div key={order.orderNumber} className="flex justify-between items-center p-3 bg-muted/50 rounded">
+                            <div>
+                              <p className="font-medium">Order #{order.orderNumber}</p>
+                              <p className="text-sm text-muted-foreground">
+                                {desc}
+                              </p>
+                            </div>
+                            <Badge>{order.orderStatus || "Pending"}</Badge>
+                          </div>
+                        );
+                      })}
                     </div>
-                    <div className="flex justify-between items-center p-3 bg-muted/50 rounded">
-                      <div>
-                        <p className="font-medium">Order #FD123457</p>
-                        <p className="text-sm text-muted-foreground">1x Pepperoni Pizza</p>
-                      </div>
-                      <Badge variant="secondary">Delivered</Badge>
-                    </div>
-                  </div>
+                  )}
                 </CardContent>
               </Card>
             </div>

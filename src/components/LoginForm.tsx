@@ -10,7 +10,7 @@ interface LoginFormProps {
   title: string;
   userType: 'restaurant' | 'admin' | 'staff';
   onNavigateBack: () => void;
-  onLoginSuccess: () => void;
+  onLoginSuccess: (username: string) => void;
 }
 
 export function LoginForm({ title, userType, onNavigateBack, onLoginSuccess }: LoginFormProps) {
@@ -36,7 +36,7 @@ export function LoginForm({ title, userType, onNavigateBack, onLoginSuccess }: L
           // Admin reuses staff login for now
           await api.staffLogin(credentials.username, credentials.password);
         }
-        onLoginSuccess();
+        onLoginSuccess(credentials.username);
       } catch (err: any) {
         alert(err?.message || "Login failed");
       }

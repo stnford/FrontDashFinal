@@ -2,6 +2,7 @@ package com.frontdash.backend.controller;
 
 import com.frontdash.backend.dto.AssignDriverRequest;
 import com.frontdash.backend.dto.CreateOrderRequest;
+import com.frontdash.backend.dto.CreateOrderResponse;
 import com.frontdash.backend.dto.DeliveryRequest;
 import com.frontdash.backend.service.FrontdashService;
 import jakarta.validation.Valid;
@@ -22,9 +23,8 @@ public class OrderController {
     }
 
     @PostMapping
-    public ResponseEntity<Map<String, Object>> createOrder(@Valid @RequestBody CreateOrderRequest request) {
-        int orderNumber = service.createOrder(request.getRestName());
-        return ResponseEntity.ok(Map.of("orderNumber", orderNumber, "message", "Order created"));
+    public ResponseEntity<CreateOrderResponse> createOrder(@Valid @RequestBody CreateOrderRequest request) {
+        return ResponseEntity.ok(service.createOrder(request));
     }
 
     @PostMapping("/{orderNumber}/assign-driver")
@@ -51,5 +51,10 @@ public class OrderController {
     @GetMapping("/{orderNumber}")
     public Map<String, Object> getOrderSummary(@PathVariable int orderNumber) {
         return service.getOrderSummary(orderNumber);
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, String>> handleBadRequest(IllegalArgumentException ex) {
+        return ResponseEntity.badRequest().body(Map.of("message", ex.getMessage()));
     }
 }

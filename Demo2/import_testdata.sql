@@ -140,6 +140,10 @@ INSERT INTO LoginCredentials(username,password,userType) VALUES ('cox04','pw','S
 INSERT INTO Staff(username, firstName, lastName, employementStatus) VALUES ('cox04','Francis','Cox','Active');
 INSERT INTO LoginCredentials(username,password,userType) VALUES ('mullard05','pw','Staff');
 INSERT INTO Staff(username, firstName, lastName, employementStatus) VALUES ('mullard05','Sarah','Mullard','Active');
+-- Restaurant owners (login)
+INSERT INTO LoginCredentials(username,password,userType) VALUES ('owner_chicken','pw','Restaurant');
+INSERT INTO LoginCredentials(username,password,userType) VALUES ('owner_pizza','pw','Restaurant');
+INSERT INTO LoginCredentials(username,password,userType) VALUES ('owner_burger','pw','Restaurant');
 INSERT INTO Driver(driverName, employementStatus, isAvailable) VALUES ('Shawn  Murray','Active','Open');
 INSERT INTO Driver(driverName, employementStatus, isAvailable) VALUES ('Alex Shopper','Active','Open');
 INSERT INTO Driver(driverName, employementStatus, isAvailable) VALUES ('Lisa  Graham','Inactive','Open');
